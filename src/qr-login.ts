@@ -26,7 +26,7 @@ function sseQrHooks(send: Send, loginId: string): QrLoginHooks {
     onQr: (dataUrl) => send("qr", { dataUrl }),
     onStatus: (message) => send("status", { message }),
     // `signal` is the attempt-scoped signal from runQrLogin — it already fires on
-    // SSE abort AND on the 5-minute deadline, so the password wait unwinds with
+    // SSE abort AND on the 15-minute deadline, so the password wait unwinds with
     // the rest of the attempt instead of lingering until its own 10-min timeout.
     requestPassword: (hint, signal) => {
       send("password_needed", { loginId, hint: hint ?? "" });
@@ -63,11 +63,11 @@ export function sessionKeyForAccount(me: { username?: string | null; id: unknown
 /**
  * Handle QR login via SSE stream.
  *
- * `requestedUserId` is a HINT ONLY (it comes from `?userId=` on /login/qr, i.e.
- * from whoever opened the page). It may be used to look up an existing session,
- * but it must never decide where a NEW session is stored: the storage key comes
- * from `getMe()` after the scan, so the row is owned by the account that
- * actually authenticated.
+ * `requestedUserId` is an OPTIONAL compatibility hint. The direct-link page
+ * deliberately omits it so any Telegram account can scan the QR. When present,
+ * it may be used only to reuse an existing session; it must never decide where a
+ * NEW session is stored. The storage key always comes from `getMe()` after the
+ * scan, so the row is owned by the account that actually authenticated.
  *
  * Before this, `saveSessionString(requestedUserId, \u2026)` combined with
  * `ON CONFLICT(user_id) DO UPDATE` let anyone pass a victim's handle, scan with
@@ -78,7 +78,7 @@ export function sessionKeyForAccount(me: { username?: string | null; id: unknown
  */
 export async function handleQrLogin(
   sessions: SessionManager,
-  requestedUserId: string,
+  requestedUserId: string | undefined,
   signal: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
   const encoder = new TextEncoder();
@@ -107,14 +107,16 @@ export async function handleQrLogin(
       signal.addEventListener("abort", () => clearInterval(heartbeat), { once: true });
 
       try {
-        const telegram = await sessions.getOrCreateSession(requestedUserId);
-
-        // Check if already connected
-        if (await telegram.ensureConnected()) {
-          const me = await telegram.getMe();
-          send("connected", { name: me.firstName, username: me.username, id: me.id });
-          controller.close();
-          return;
+        // Compatibility fast path for old /login/qr?userId=... links. The new
+        // WhatsApp-like direct-link flow omits the hint and always starts QR.
+        if (requestedUserId) {
+          const telegram = await sessions.tryReconnectSession(requestedUserId);
+          if (telegram) {
+            const me = await telegram.getMe();
+            send("connected", { name: me.firstName, username: me.username, id: me.id });
+            controller.close();
+            return;
+          }
         }
 
         send("status", { message: "Starting QR login..." });
@@ -130,7 +132,7 @@ export async function handleQrLogin(
           const me = await fresh.getMe();
           // Identity comes from the scanned account, never from the query param.
           const userId = sessionKeyForAccount(me);
-          if (userId !== requestedUserId) {
+          if (requestedUserId && userId !== requestedUserId) {
             logger.info("QR login stored under the scanned account, not the requested id", {
               component: "qr-login",
               event: "qr.identity.mismatch",
