@@ -10,7 +10,7 @@ const SSE_HEARTBEAT_INTERVAL_MS = 5000;
 
 // How long the user has to type the 2FA cloud password after we prompt before
 // the login attempt gives up. The SSE heartbeat keeps the stream warm meanwhile.
-const PASSWORD_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
+const PASSWORD_ENTRY_TIMEOUT_MS = 10 * 60 * 1000;
 
 type Send = (event: string, data: unknown) => void;
 
@@ -27,7 +27,7 @@ function sseQrHooks(send: Send, loginId: string): QrLoginHooks {
     onStatus: (message) => send("status", { message }),
     // `signal` is the attempt-scoped signal from runQrLogin — it already fires on
     // SSE abort AND on the 5-minute deadline, so the password wait unwinds with
-    // the rest of the attempt instead of lingering until its own 2-min timeout.
+    // the rest of the attempt instead of lingering until its own 10-min timeout.
     requestPassword: (hint, signal) => {
       send("password_needed", { loginId, hint: hint ?? "" });
       return awaitPassword(loginId, signal, PASSWORD_ENTRY_TIMEOUT_MS);

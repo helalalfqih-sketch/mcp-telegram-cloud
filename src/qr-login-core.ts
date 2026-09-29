@@ -27,9 +27,9 @@ const MAX_PASSWORD_ATTEMPTS = 3;
 
 /** Overall deadline for a single QR login attempt. GramJS's QR loop has no
  *  built-in timeout (it waits for the scan forever), so we impose one and tear
- *  the client down if the user never finishes. Matches the 5-minute window the
- *  upstream manual implementation used. */
-const QR_LOGIN_DEADLINE_MS = 5 * 60 * 1000;
+ *  the client down if the user never finishes. The 15-minute window leaves enough
+ *  room for QR scanning plus the separate 10-minute 2FA password-entry window. */
+const QR_LOGIN_DEADLINE_MS = 15 * 60 * 1000;
 
 export interface QrLoginHooks {
   /** Emit a fresh QR image (data URL) for the user to scan. */
@@ -40,7 +40,7 @@ export interface QrLoginHooks {
   /** Telegram requires the 2FA cloud password. Resolve with the password the
    *  user supplied. Reject/throw to abort the login (e.g. on timeout/cancel).
    *  `signal` fires when the overall QR-login attempt is torn down (external
-   *  abort OR the 5-minute deadline) — the implementation MUST stop waiting and
+   *  abort OR the 15-minute deadline) — the implementation MUST stop waiting and
    *  reject when it fires, otherwise the deadline can't unwind a password wait. */
   requestPassword: (hint: string | undefined, signal: AbortSignal) => Promise<string>;
   /** A submitted password was rejected by Telegram; another `requestPassword`

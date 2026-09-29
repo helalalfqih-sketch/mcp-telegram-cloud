@@ -3,6 +3,7 @@
 import "dotenv/config";
 import { Hono } from "hono";
 import { config, SENTINEL_LOG_HASH_SALT } from "./config.js";
+import { encryptionEnabled } from "./crypto.js";
 import { DestructiveGuard } from "./destructive-guard.js";
 import { HTTP_IDLE_TIMEOUT_S } from "./http-timeouts.js";
 import { startDrain } from "./lifecycle.js";
@@ -45,6 +46,16 @@ if (!config.logUserIds && config.logHashSalt === SENTINEL_LOG_HASH_SALT) {
       component: "config",
       event: "log_hash_salt.sentinel",
     },
+  );
+}
+
+// INDEXES self-host hardening: never allow a production deployment to start
+// while Telegram MTProto session strings would be persisted in plaintext.
+// The SessionManager already encrypts new writes and backfills legacy rows;
+// this guard makes the encryption key mandatory for production.
+if (process.env.NODE_ENV === "production" && !encryptionEnabled()) {
+  throw new Error(
+    "SESSION_ENCRYPTION_KEY is required in production. Refusing to start with plaintext Telegram session storage.",
   );
 }
 
