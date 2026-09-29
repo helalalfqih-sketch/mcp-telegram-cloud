@@ -23,13 +23,14 @@ export function createLoginRoutes({ sessions }: LoginRoutesDeps): Hono {
     return c.html(<LoginPage />);
   });
 
+  // Direct-link flow: no username is required. Any Telegram account that scans
+  // the QR becomes the authenticated identity; the server derives the storage
+  // key from Telegram getMe() after authentication.
+  //
+  // userId remains accepted as an optional compatibility hint for old links.
   app.get("/qr", async (c) => {
-    const userId = c.req.query("userId");
-    if (!userId) {
-      return c.text("userId required", 400);
-    }
-
-    const stream = await handleQrLogin(sessions, userId, c.req.raw.signal);
+    const userIdHint = c.req.query("userId");
+    const stream = await handleQrLogin(sessions, userIdHint, c.req.raw.signal);
 
     return new Response(stream, {
       headers: {
